@@ -4,6 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>SparkTek Store</title>
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',sans-serif}
 body{background:#f0f2f5;min-height:100vh;padding-bottom:70px}
@@ -817,41 +818,154 @@ function goStep2() {
 }
 
 function placeOrder() {
+  initiateSecurePayment();
+}
+
+async function initiateSecurePayment() {
   const total = cartTotal() + delivery();
-  const totalInPaise = total * 100; // Razorpay expects amount in paise
   
-  // Store order temporarily (will be confirmed after payment)
-  const tempOrder = {
-    id: oid(),
-    items: [...cart],
-    total: total,
-    savings: cartSav(),
-    date: new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'}),
-    addr: {
-      name:document.getElementById('addrName').value,
-      phone:document.getElementById('addrPhone').value,
-      pin:document.getElementById('addrPin').value,
-      city:document.getElementById('addrCity').value,
-      state:document.getElementById('addrState').value,
-      line:document.getElementById('addrLine').value
+  if (!cart.length) {
+    showToast('Cart khali hai!', 'error');
+    return;
+  }
+
+  const name = document.getElementById('addrName').value.trim();
+  const phone = document.getElementById('addrPhone').value.trim();
+  const pin = document.getElementById('addrPin').value.trim();
+  const city = document.getElementById('addrCity').value.trim();
+  const line = document.getElementById('addrLine').value.trim();
+  
+  if (!name || !phone || !pin || !city || !line) {
+    showToast('Sab * fields bharo!', 'error');
+    return;
+  }
+
+  try {
+    showToast('Order create ho raha hai...', 'info');
+
+    // Call Netlify Function to create order (SECURE - backend)
+    const orderResponse = await fetch('/.netlify/functions/create-order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        amount: total,
+        currency: 'INR',
+        receipt: `order_${Date.now()}`
+      })
+    });
+
+    const orderData = await orderResponse.json();
+
+    if (!orderData.orderId) {
+      throw new Error(orderData.error || 'Order creation failed');
+    }
+
+    // Order details for after payment
+    const orderDetails = {
+      id: `ORD_${Date.now()}`,
+      razorpayOrderId: orderData.orderId,
+      items: [...cart],
+      total: total,
+      savings: cartSav(),
+      date: new Date().toLocaleDateString('en-IN', {day:'numeric', month:'long', year:'numeric'}),
+      addr: {
+        name: name,
+        phone: phone,
+        pin: pin,
+        city: city,
+        state: document.getElementById('addrState').value,
+        line: line
+      },
+      pay: selectedPay,
+      status: 'Order Confirmed',
+      eta: '3–5 Business Days'
+    };
+
+    openRazorpayCheckout(orderData, orderDetails);
+
+  } catch (error) {
+    console.error('Payment error:', error);
+    showToast('Error: ' + error.message, 'error');
+  }
+}
+
+function openRazorpayCheckout(orderData, orderDetails) {
+  const options = {
+    key: orderData.keyId,
+    amount: orderData.amount,
+    currency: orderData.currency,
+    name: 'SPARK-TEK',
+    description: `Order ${orderDetails.id}`,
+    order_id: orderData.orderId,
+    
+    handler: function(response) {
+      verifyPaymentSecure(response, orderDetails);
     },
-    pay: selectedPay,
-    status:'Order Confirmed',
-    eta:'3–5 Business Days'
+    
+    prefill: {
+      name: orderDetails.addr.name,
+      contact: orderDetails.addr.phone
+    },
+    
+    theme: {
+      color: '#005bbf'
+    },
+    
+    modal: {
+      ondismiss: function() {
+        showToast('Payment cancelled', 'info');
+      }
+    }
   };
-  
-  // Save temp order to localStorage for after payment
-  localStorage.setItem('spt_pending_order', JSON.stringify(tempOrder));
-  
-  // Redirect to Razorpay Payment Handle with amount
-  const paymentUrl = `https://razorpay.me/${RAZORPAY_PAYMENT_HANDLE}?amount=${total}&notes=OrderID:${tempOrder.id}`;
-  
-  showToast('Payment page khul raha hai...','info');
-  
-  // Redirect after 1 second
-  setTimeout(() => {
-    window.location.href = paymentUrl;
-  }, 1000);
+
+  const rzp = new Razorpay(options);
+  rzp.open();
+}
+
+async function verifyPaymentSecure(paymentResponse, orderDetails) {
+  try {
+    showToast('Payment verify ho raha hai...', 'info');
+
+    // Call Netlify Function to verify payment (SECURE - backend verification!)
+    const verifyResponse = await fetch('/.netlify/functions/verify-payment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        razorpay_order_id: paymentResponse.razorpay_order_id,
+        razorpay_payment_id: paymentResponse.razorpay_payment_id,
+        razorpay_signature: paymentResponse.razorpay_signature
+      })
+    });
+
+    const verifyData = await verifyResponse.json();
+
+    if (!verifyData.success) {
+      throw new Error(verifyData.message || 'Payment verification failed');
+    }
+
+    // Payment verified! Now confirm order
+    orders.unshift(orderDetails);
+    cart = [];
+    updateBottomNav();
+    saveData();
+
+    // Show success page
+    document.getElementById('step2').style.display = 'none';
+    document.getElementById('step3').style.display = 'block';
+    renderStepBar(3);
+    document.getElementById('checkoutTitle').textContent = 'Order Done!';
+    document.getElementById('successOrderId').textContent = orderDetails.id;
+    document.getElementById('successItems').innerHTML = orderDetails.items
+      .map(i => `<div class="order-item-row"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65%">${i.name} × ${i.qty}</span><span style="font-weight:600">${fmt(i.price * i.qty)}</span></div>`)
+      .join('');
+    document.getElementById('successTotal').textContent = fmt(orderDetails.total);
+
+    showToast('Order confirm ho gaya! 🎉', 'success');
+
+  } catch (error) {
+    console.error('Verification error:', error);
+    showToast('Error: ' + error.message, 'error');
+  }
 }
 
 // ═══════════════ ORDERS ═══════════════
@@ -1050,7 +1164,7 @@ function saveProduct() {
 // ═══════════════ INIT ═══════════════
 function init() {
   loadData();
-  checkPendingOrder(); // Check if order needs to be confirmed after payment
+  // checkPendingOrder() removed - orders will NOT auto-confirm without verified payment
   // States dropdown
   const st=document.getElementById('addrState');
   st.innerHTML=STATES.map(s=>`<option${s==='Rajasthan'?' selected':''}>${s}</option>`).join('');
