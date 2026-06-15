@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>SparkTek Store - Firebase</title>
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',sans-serif}
+body{background:#f0f2f5;min-height:100vh;padding-bottom:70px}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-thumb{background:#ccc;border-radius:4px}
+input:focus,select:focus,textarea:focus{outline:none;border-color:#2874f0!important;box-shadow:0 0 0 3px rgba(40,116,240,0.12)!important}
+
+/* NAV */
+#nav{background:#2874f0;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,0.15)}
+#nav.seller{background:#1e1b4b}
+.nav-inner{max-width:800px;margin:0 auto;padding:0 13px}
+.nav-top{display:flex;align-items:center;gap:10px;padding:10px 0 7px}
+.logo{background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:5px;color:#fff;font-size:17px;font-weight:900;letter-spacing:-0.5px;flex-shrink:0}
+.seller-badge{background:#7c3aed;color:#fff;font-size:9px;font-weight:700;padding:3px 8px;border-radius:20px;flex-shrink:0}
+.search-wrap{flex:1;position:relative}
+.search-icon{position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:12px}
+#searchInput{width:100%;padding:7px 10px 7px 28px;border-radius:8px;border:none;font-size:13px;background:rgba(255,255,255,0.15);color:#fff;outline:none}
+#searchInput::placeholder{color:rgba(255,255,255,0.65)}
+.nav-orders-btn{background:none;border:none;cursor:pointer;color:#fff;font-size:11px;font-weight:600;flex-shrink:0}
+.cart-btn{background:rgba(255,255,255,0.15);border:none;cursor:pointer;color:#fff;font-size:12px;font-weight:700;border-radius:8px;padding:7px 10px;position:relative;display:flex;align-items:center;gap:4px}
+.cart-badge{background:#ff6b35;color:#fff;font-size:9px;font-weight:800;width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;position:absolute;top:-5px;right:-5px}
+.plus-btn{background:#7c3aed;border:none;cursor:pointer;color:#fff;font-size:12px;font-weight:700;border-radius:8px;padding:7px 12px}
+.cat-bar{display:flex;gap:5px;overflow-x:auto;padding-bottom:9px;scrollbar-width:none}
+.cat-bar::-webkit-scrollbar{display:none}
+.cat-pill{background:rgba(255,255,255,0.15);color:#fff;border:none;border-radius:20px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0;white-space:nowrap;transition:all 0.15s}
+.cat-pill.active{background:#fff;color:#2874f0}
+
+/* TOAST */
+#toast{display:none;position:fixed;top:68px;left:50%;transform:translateX(-50%);background:#16a34a;color:#fff;padding:9px 18px;border-radius:24px;font-size:13px;font-weight:700;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,0.25);white-space:nowrap;max-width:90vw;text-align:center}
+#toast.error{background:#dc2626}
+
+.page{display:none;max-width:800px;margin:0 auto;padding:14px 12px}
+.page.active{display:block}
+
+.card{background:#fff;border-radius:12px;overflow:hidden;cursor:pointer;box-shadow:0 1px 6px rgba(0,0,0,0.08);border:1px solid #ebebeb;display:flex;flex-direction:column;position:relative;transition:transform 0.15s}
+.card-img{height:148px;display:flex;align-items:center;justify-content:center;position:relative;background:#f5f5f5}
+.card-img img{max-width:90%;max-height:90%;object-fit:contain}
+.card-body{padding:11px 11px 8px;flex:1;display:flex;flex-direction:column}
+.card-name{font-size:13px;font-weight:700;color:#212121;line-height:1.3;margin-bottom:5px}
+.card-price{font-size:15px;font-weight:800;color:#212121}
+.add-btn{width:100%;padding:9px 0;background:#2874f0;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;transition:all 0.15s;margin-top:auto}
+.add-btn.incart{background:#e8f0fe;color:#2874f0;border:1.5px solid #2874f0}
+
+/* BOTTOM NAV */
+#bottomNav{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #ebebeb;display:flex;gap:20px;padding:8px 0 12px;z-index:99;max-width:800px;margin:0 auto;width:100%;left:50%;transform:translateX(-50%)}
+.nav-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;color:#aaa;font-size:10px;font-weight:600;border:none;background:none}
+.nav-item.active{color:#2874f0}
+.nav-item-icon{font-size:20px}
+
+.loading{text-align:center;padding:40px 20px}
+.spinner{border:4px solid #f3f3f3;border-top:4px solid #2874f0;border-radius:50%;width:40px;height:40px;animation:spin 1s linear infinite;margin:0 auto}
+@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav id="nav">
+<div class="nav-inner">
+<div class="nav-top">
+<button class="logo" onclick="goHome()">⚡ SparkTek</button>
+<button class="nav-orders-btn" onclick="showPage('orders')">📦 Orders</button>
+<button class="cart-btn" onclick="showPage('cart')">
+🛒 Cart
+<span class="cart-badge" id="cartCount">0</span>
+</button>
+<button class="plus-btn" onclick="toggleSeller()">+ SELLER MODE</button>
+</div>
+</div>
+</nav>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<!-- HOME PAGE -->
+<div id="homePage" class="page active">
+<div class="loading" id="homeLoading">
+<div class="spinner"></div>
+<p>Loading products...</p>
+</div>
+<div id="homeContent" style="display:none">
+<div id="productsGrid"></div>
+</div>
+</div>
+
+<!-- CART PAGE -->
+<div id="cartPage" class="page">
+<h2 style="padding:14px 12px 0;margin-bottom:20px">🛒 Your Cart</h2>
+<div id="cartContent"></div>
+</div>
+
+<!-- ORDERS PAGE -->
+<div id="ordersPage" class="page">
+<h2 style="padding:14px 12px 0;margin-bottom:20px">📦 Your Orders</h2>
+<div id="ordersContent"></div>
+</div>
+
+<!-- SELLER PAGE -->
+<div id="sellerPage" class="page">
+<h2 style="padding:14px 12px 0;margin-bottom:20px;color:#fff">Seller Mode</h2>
+<div id="sellerContent"></div>
+</div>
+
+<!-- BOTTOM NAV -->
+<div id="bottomNav">
+<button class="nav-item active" onclick="showPage('home')"><span class="nav-item-icon">🏠</span>Home</button>
+<button class="nav-item" onclick="showPage('cart')"><span class="nav-item-icon">🛒</span>Cart</button>
+<button class="nav-item" onclick="showPage('orders')"><span class="nav-item-icon">📦</span>Orders</button>
+</div>
+
+<script>
+// Firebase Config
+const firebaseConfig = {
+  apiKey: "AIzaSyDwJUjRXQBzMD-JOywooz-eeYphIA7lj4",
+  authDomain: "sparktek7-store.firebaseapp.com",
+  projectId: "sparktek7-store",
+  storageBucket: "sparktek7-store.firebasestorage.app",
+  messagingSenderId: "76080545161९",
+  appId: "1:78080545161९:web:3799b538e6a8b7862e6d56"
+};
+
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const storage = firebase.storage();
+
+let cart = [];
+let products = [];
+let currentPage = 'home';
+let sellerMode = false;
+
+// Initialize App
+async function init() {
+  try {
+    console.log('Initializing app...');
+    await loadProducts();
+    loadCartFromStorage();
+    updateUI();
+    showPage('home');
+  } catch (error) {
+    console.error('Init error:', error);
+    showToast('Error initializing app: ' + error.message, true);
+  }
+}
+
+// Load Products from Firestore
+async function loadProducts() {
+  try {
+    const snapshot = await db.collection('products').get();
+    products = [];
+    snapshot.forEach(doc => {
+      products.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+    console.log('Loaded products:', products);
+    document.getElementById('homeLoading').style.display = 'none';
+    document.getElementById('homeContent').style.display = 'block';
+    renderProducts();
+  } catch (error) {
+    console.error('Load products error:', error);
+    showToast('Error loading products: ' + error.message, true);
+  }
+}
+
+// Render Products
+function renderProducts() {
+  const grid = document.getElementById('productsGrid');
+  grid.innerHTML = products.map(p => `
+    <div class="card" onclick="viewProduct('${p.id}')">
+      <div class="card-img">
+        ${p.image ? `<img src="${p.image}" alt="${p.name}">` : `<span style="font-size:52px">${p.emoji || '📦'}</span>`}
+      </div>
+      <div class="card-body">
+        <div class="card-name">${p.name}</div>
+        <div class="card-price">₹${p.price}</div>
+        <button class="add-btn" onclick="event.stopPropagation(); addToCart('${p.id}', '${p.name}', ${p.price}, '${p.image || ''}')">
+          ${isInCart(p.id) ? '✓ In Cart' : 'Add to Cart'}
+        </button>
+      </div>
+    </div>
+  `).join('');
+}
+
+// Cart Functions
+function addToCart(id, name, price, image) {
+  const item = cart.find(x => x.id === id);
+  if (item) {
+    item.qty++;
+  } else {
+    cart.push({ id, name, price, image, qty: 1 });
+  }
+  saveCart();
+  updateUI();
+  showToast('Added to cart!');
+}
+
+function isInCart(id) {
+  return cart.some(x => x.id === id);
+}
+
+function saveCart() {
+  localStorage.setItem('spt_cart', JSON.stringify(cart));
+}
+
+function loadCartFromStorage() {
+  const saved = localStorage.getItem('spt_cart');
+  cart = saved ? JSON.parse(saved) : [];
+}
+
+function removeFromCart(id) {
+  cart = cart.filter(x => x.id !== id);
+  saveCart();
+  updateUI();
+}
+
+function updateQty(id, qty) {
+  const item = cart.find(x => x.id === id);
+  if (item) {
+    item.qty = Math.max(1, qty);
+    saveCart();
+    updateUI();
+  }
+}
+
+// Page Navigation
+function showPage(page) {
+  currentPage = page;
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById(page + 'Page').classList.add('active');
+  
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  event.target.closest('.nav-item')?.classList.add('active');
+  
+  if (page === 'cart') renderCart();
+  if (page === 'orders') renderOrders();
+  if (page === 'seller') renderSeller();
+}
+
+function goHome() {
+  showPage('home');
+  document.querySelector('[onclick*="home"]').classList.add('active');
+}
+
+function renderCart() {
+  const content = document.getElementById('cartContent');
+  if (cart.length === 0) {
+    content.innerHTML = '<div style="text-align:center;padding:40px 20px"><p>Your cart is empty</p></div>';
+    return;
+  }
+  
+  const total = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+  
+  content.innerHTML = `
+    <div style="padding:0 12px">
+      ${cart.map(item => `
+        <div style="background:#fff;padding:12px;margin-bottom:10px;border-radius:8px;display:flex;gap:10px">
+          <div style="width:60px;height:60px;background:#f5f5f5;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            ${item.image ? `<img src="${item.image}" style="max-width:90%;max-height:90%;object-fit:contain">` : '📦'}
+          </div>
+          <div style="flex:1">
+            <div style="font-weight:700;font-size:13px;margin-bottom:4px">${item.name}</div>
+            <div style="color:#aaa;font-size:12px;margin-bottom:8px">₹${item.price}</div>
+            <div style="display:flex;gap:5px">
+              <button onclick="updateQty('${item.id}', ${item.qty - 1})" style="padding:2px 8px;background:#f0f0f0;border:none;border-radius:4px">-</button>
+              <span style="padding:2px 8px;background:#f0f0f0;border-radius:4px;min-width:30px;text-align:center">${item.qty}</span>
+              <button onclick="updateQty('${item.id}', ${item.qty + 1})" style="padding:2px 8px;background:#f0f0f0;border:none;border-radius:4px">+</button>
+              <button onclick="removeFromCart('${item.id}')" style="padding:2px 8px;background:#ffebee;color:#d32f2f;border:none;border-radius:4px;margin-left:auto">Delete</button>
+            </div>
+          </div>
+        </div>
+      `).join('')}
+      
+      <div style="background:#fff;padding:16px;border-radius:8px;margin-top:20px;margin-bottom:80px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:12px;font-weight:700">
+          <span>Subtotal:</span>
+          <span>₹${total}</span>
+        </div>
+        <button onclick="proceedToCheckout()" style="width:100%;padding:14px;background:#ff9f00;color:#212121;border:none;border-radius:8px;font-weight:700;font-size:15px;cursor:pointer">
+          Proceed to Checkout
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function proceedToCheckout() {
+  if (cart.length === 0) return;
+  // Checkout logic here
+  showToast('Checkout functionality to be implemented');
+}
+
+async function renderOrders() {
+  const content = document.getElementById('ordersContent');
+  try {
+    const snapshot = await db.collection('orders').where('userId', '==', 'current_user').get();
+    const orders = [];
+    snapshot.forEach(doc => {
+      orders.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+    
+    if (orders.length === 0) {
+      content.innerHTML = '<div style="text-align:center;padding:40px 20px"><p>No orders yet</p></div>';
+      return;
+    }
+    
+    content.innerHTML = orders.map(order => `
+      <div style="background:#fff;padding:14px;margin-bottom:10px;border-radius:8px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+          <strong>Order #${order.id.slice(0, 8)}</strong>
+          <span style="color:#2874f0">${order.status || 'Pending'}</span>
+        </div>
+        <div style="font-size:12px;color:#aaa;margin-bottom:8px">${order.createdAt?.toDate?.().toLocaleDateString() || 'Date unknown'}</div>
+        <div style="font-weight:700;font-size:14px">₹${order.total}</div>
+      </div>
+    `).join('');
+  } catch (error) {
+    content.innerHTML = `<div style="color:#d32f2f;padding:20px">Error loading orders: ${error.message}</div>`;
+  }
+}
+
+function toggleSeller() {
+  sellerMode = !sellerMode;
+  if (sellerMode) {
+    document.getElementById('nav').classList.add('seller');
+    showPage('seller');
+  } else {
+    document.getElementById('nav').classList.remove('seller');
+    showPage('home');
+  }
+}
+
+async function renderSeller() {
+  const content = document.getElementById('sellerContent');
+  content.innerHTML = `
+    <div style="padding:0 12px">
+      <h3 style="color:#fff;margin-bottom:16px">Add New Product</h3>
+      <form onsubmit="event.preventDefault(); addProduct()" style="background:#1e1b4b;padding:16px;border-radius:8px;margin-bottom:20px">
+        <input type="text" placeholder="Product Name" id="prodName" required style="width:100%;padding:10px;margin-bottom:10px;border:1px solid #444;border-radius:6px;background:#2d2a4e;color:#fff">
+        <input type="number" placeholder="Price" id="prodPrice" required style="width:100%;padding:10px;margin-bottom:10px;border:1px solid #444;border-radius:6px;background:#2d2a4e;color:#fff">
+        <button type="submit" style="width:100%;padding:12px;background:#7c3aed;color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer">Add Product</button>
+      </form>
+    </div>
+  `;
+}
+
+async function addProduct() {
+  const name = document.getElementById('prodName').value;
+  const price = parseFloat(document.getElementById('prodPrice').value);
+  
+  if (!name || !price) {
+    showToast('Please fill all fields', true);
+    return;
+  }
+  
+  try {
+    await db.collection('products').add({
+      name,
+      price,
+      emoji: '📦',
+      createdAt: new Date()
+    });
+    
+    showToast('Product added!');
+    document.getElementById('prodName').value = '';
+    document.getElementById('prodPrice').value = '';
+    await loadProducts();
+  } catch (error) {
+    showToast('Error adding product: ' + error.message, true);
+  }
+}
+
+function updateUI() {
+  document.getElementById('cartCount').textContent = cart.length;
+}
+
+function showToast(msg, isError = false) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.toggle('error', isError);
+  toast.style.display = 'block';
+  setTimeout(() => toast.style.display = 'none', 3000);
+}
+
+// Start App
+window.addEventListener('DOMContentLoaded', init);
+</script>
+
+</body>
+</html>
